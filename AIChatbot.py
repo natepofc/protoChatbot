@@ -21,9 +21,12 @@ import board
 import busio
 from adafruit_pca9685 import PCA9685
 
-# NeoPixel setup
-import adafruit_pixelbuf
-from adafruit_raspberry_pi5_neopixel_write import neopixel_write
+# ================================================================
+#  PLATFORM SELECTION
+# ================================================================
+# Set this to True if running on Raspberry Pi 5.
+# Set to False for Raspberry Pi 4 (default).
+USE_PI5 = False
 
 
 # ================================================================
@@ -35,7 +38,6 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 CHAT_MODEL = "gpt-4.1-mini"
 TTS_MODEL = "gpt-4o-mini-tts"
 VOICE_NAME = "echo"
-
 
 
 # ================================================================
@@ -135,25 +137,47 @@ current_servo_angles = {}
 
 
 # ================================================================
-#  NEOPIXEL MOUTH CONFIGURATION
+#  NEOPIXEL MOUTH CONFIGURATION (Pi 4 / Pi 5)
 # ================================================================
 
 NEOPIXEL_PIN = board.D13
 NUM_PIXELS = 8
 
+if USE_PI5:
+    # ------------------------------------------------------------
+    # Raspberry Pi 5 implementation
+    # ------------------------------------------------------------
+    import adafruit_pixelbuf
+    from adafruit_raspberry_pi5_neopixel_write import neopixel_write
 
-class Pi5PixelBuf(adafruit_pixelbuf.PixelBuf):
-    """Custom PixelBuf implementation for Raspberry Pi 5."""
+    class Pi5PixelBuf(adafruit_pixelbuf.PixelBuf):
+        """Custom PixelBuf implementation for Raspberry Pi 5."""
 
-    def __init__(self, pin, size, **kwargs):
-        self._pin = pin
-        super().__init__(size=size, **kwargs)
+        def __init__(self, pin, size, **kwargs):
+            self._pin = pin
+            super().__init__(size=size, **kwargs)
 
-    def _transmit(self, buf):
-        neopixel_write(self._pin, buf)
+        def _transmit(self, buf):
+            neopixel_write(self._pin, buf)
 
+    pixels = Pi5PixelBuf(
+        NEOPIXEL_PIN,
+        NUM_PIXELS,
+        auto_write=True,
+        byteorder="BRG",
+    )
 
-pixels = Pi5PixelBuf(NEOPIXEL_PIN, NUM_PIXELS, auto_write=True, byteorder="BRG")
+else:
+    # ------------------------------------------------------------
+    # Raspberry Pi 4 implementation
+    # ------------------------------------------------------------
+    import neopixel
+    pixels = neopixel.NeoPixel(
+        NEOPIXEL_PIN,
+        NUM_PIXELS,
+        auto_write=True,
+        pixel_order=neopixel.GRB,   # change if colors look off
+    )
 
 
 def show_mouth(amplitude, color=(256, 256, 256)):
@@ -371,6 +395,7 @@ def blink_twice():
         last_blink_timestamp = time.time()
         time.sleep(0.3)
 
+
 def eyes_idle_loop():
     """Background idle movement and blinking for eyes."""
     global is_running, is_speaking, is_thinking, last_blink_timestamp, is_armed, is_offline
@@ -448,16 +473,21 @@ def eyes_idle_loop():
 
 
 def led_blink_loop():
+    """
+    LED behavior:
+    - OFF if not armed
+    - BLINK when busy (thinking or speaking)
+    - SOLID ON when ready for input
+    """
     global is_running, is_thinking, is_speaking, listen_led, is_armed
 
     while is_running:
-        # LED OFF if switch is off
         if not is_armed:
             listen_led.value = False
             time.sleep(0.1)
             continue
 
-        # Blink if BUSY (thinking OR speaking)
+        # Busy (cannot accept input): blink
         if is_thinking or is_speaking:
             listen_led.value = True
             time.sleep(0.3)
@@ -465,7 +495,7 @@ def led_blink_loop():
             time.sleep(0.3)
             continue
 
-        # Otherwise READY → solid ON
+        # Ready: solid ON
         listen_led.value = True
         time.sleep(0.1)
 
@@ -612,11 +642,9 @@ def transcribe_audio(filename):
         return ""
 
 
-
 # ================================================================
 #  SPEECH SYNTHESIS + MOUTH MOVEMENT
 # ================================================================
-
 
 def record_audio(filename="input.wav", threshold=2400, silence_duration=0.6):
     """
@@ -703,6 +731,7 @@ def record_audio(filename="input.wav", threshold=2400, silence_duration=0.6):
         wf.writeframes(b"".join(frames))
 
     return filename
+
 
 def speak_text(text, color=(0, 0, 255)):
     """Speak via TTS and animate mouth with amplitude levels."""
@@ -805,14 +834,13 @@ def speak_text(text, color=(0, 0, 255)):
     is_speaking = False
 
 
-
 # ================================================================
 #  MAIN LOOP + EMOTION PROCESSING
 # ================================================================
 
 def update_listen_led_state():
     """
-    LED logic:
+    LED logic (non-blinking decisions):
     - OFF if switch off
     - BLINKING handled by led_blink_loop when busy
     - SOLID ON when armed & ready
@@ -862,8 +890,7 @@ def main():
 
     try:
         while True:
-            update_listen_led_state()
-
+            # Update is_armed based on button
             button_on = not listen_button.value
             is_armed = button_on
 
@@ -875,7 +902,7 @@ def main():
                     set_eyelids_closed()  # going to sleep
                 last_armed = button_on
 
-            listen_led.value = button_on
+            update_listen_led_state()
 
             if not button_on:
                 # Switch OFF: don't listen, just idle/sleep
@@ -885,7 +912,7 @@ def main():
             # Switch is ON: listen once
             audio_path = record_audio()
 
-	    # If recording was cancelled (button turned off or no audio), skip this turn
+            # If recording was cancelled (button turned off or no audio), skip this turn
             if audio_path is None:
                 is_thinking = False
                 continue
@@ -958,7 +985,6 @@ def main():
 
             full_reply = response.choices[0].message.content.strip()
 
-
             # Extract emotion
             match = re.search(r"\[emotion:\s*(\w+)\]", full_reply, re.IGNORECASE)
             emotion = match.group(1).lower() if match else "neutral"
@@ -986,7 +1012,6 @@ def main():
         pca.deinit()
         clear_mouth()
         print("\n👋 Program stopped.")
-
 
 
 if __name__ == "__main__":
