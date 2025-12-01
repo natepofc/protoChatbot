@@ -26,7 +26,7 @@ from adafruit_pca9685 import PCA9685
 # ================================================================
 # Set this to True if running on Raspberry Pi 5.
 # Set to False for Raspberry Pi 4 (default).
-USE_PI5 = False
+USE_PI5 = True
 
 
 # ================================================================
@@ -923,6 +923,14 @@ def main():
             print(f"🧑 You said: {user_text}")
 
             os.remove(audio_path)
+
+            # 🔒 NEW: if nothing was transcribed, skip asking the model
+            if not user_text or not user_text.strip():
+                print("⚠️ Nothing clear was transcribed; not sending to OpenAI.")
+                is_thinking = False
+                time.sleep(0.5)   # small pause so it doesn't spin too fast
+                continue
+
             norm = user_text.lower().strip()
 
             # ----------------------------------------------
