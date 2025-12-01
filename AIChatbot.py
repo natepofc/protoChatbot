@@ -924,7 +924,7 @@ def main():
 
             os.remove(audio_path)
 
-            # 🔒 NEW: if nothing was transcribed, skip asking the model
+            # if nothing was transcribed, skip asking the model
             if not user_text or not user_text.strip():
                 print("⚠️ Nothing clear was transcribed; not sending to OpenAI.")
                 is_thinking = False
@@ -970,6 +970,8 @@ def main():
                         {"role": "system", "content": (
                             "You are a calm, expressive AI. "
                             "Respond concisely in 1 sentence unless necessary. "
+                            "Do NOT start with greetings like 'Hello', 'Hi', or 'How can I help you today?'. "
+                            "Just answer the user's request directly. "
                             "Also output emotion as one of: happy, sad, neutral, angry, surprised. "
                             "Format: <text> [emotion: <label>]"
                         )},
