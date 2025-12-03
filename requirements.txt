@@ -1,0 +1,23 @@
+# OpenAI API
+openai>=1.0.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# Audio I/O
+pyaudio>=0.2.11
+
+# Numerical operations
+numpy>=1.24.0
+
+# Adafruit CircuitPython libraries for Raspberry Pi
+# Note: These are hardware-specific and may not work on macOS
+# They are required for actual Raspberry Pi deployment
+adafruit-circuitpython-pca9685>=3.4.0
+adafruit-circuitpython-neopixel>=6.0.0
+# adafruit-raspberry-pi5-neopixel - Not available on PyPI, install separately if needed for Pi5
+adafruit-blinka>=8.0.0
+
+# GPIO access for Raspberry Pi 5 (optional, Pi5-specific)
+# rpi-lgpio>=0.2.0  # Uncomment if deploying on Raspberry Pi 5
+

@@ -38,7 +38,7 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 CHAT_MODEL = "gpt-4.1-mini"
 TTS_MODEL = "gpt-4o-mini-tts"
 VOICE_NAME = "echo"
-
+ASSISTANT_ID = os.getenv("ASSISTANT_ID")
 
 # ================================================================
 #  AUDIO DEVICE CONFIGURATION
@@ -931,6 +931,9 @@ def main():
     is_armed = button_on
     last_armed = button_on
 
+    # Initialize thread variable - will be created on first use
+    thread = None
+    
     try:
         while True:
             # Update is_armed based on button
@@ -1013,22 +1016,48 @@ def main():
             print("🤔 Thinking...")
 
             try:
-                response = client.chat.completions.create(
-                    model=CHAT_MODEL,
-                    messages=[
-                        {"role": "system", "content": (
-                            "You are a calm, expressive AI. "
-                            "Respond concisely in 1 sentence unless necessary. "
-                            "Do NOT start with greetings like 'Hello', 'Hi', or 'How can I help you today?'. "
-                            "Just answer the user's request directly. "
-                            "Also output emotion as one of: happy, sad, neutral, angry, surprised. "
-                            "Format: <text> [emotion: <label>]"
-                        )},
-                        {"role": "user", "content": user_text},
-                    ]
+                # Create thread only if it doesn't exist yet
+                if thread is None:
+                    thread = client.beta.threads.create()
+                
+                client.beta.threads.messages.create(
+                    thread_id=thread.id,
+                    role="user",
+                    content=user_text
                 )
-                global is_offline
-                is_offline = False
+
+                run = client.beta.threads.runs.create(
+                    thread_id=thread.id,
+                    assistant_id=ASSISTANT_ID,
+                )
+
+                while run.status in ("queued", "in_progress"):
+                    time.sleep(0.8)
+                    run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+
+                # 5) Read the latest assistant message
+                messages = client.beta.threads.messages.list(thread_id=thread.id, order="desc", limit=1)
+                latest = messages.data[0]
+                print(latest.content[0].text.value)
+                response = latest.content[0].text.value
+
+
+                # response = client.chat.completions.create(
+                #     model=CHAT_MODEL,
+                #     messages=[
+                #         {"role": "system", "content": (
+                #             "You are a calm, expressive AI. "
+                #             "Respond concisely in 1 sentence unless necessary. "
+                #             "Do NOT start with greetings like 'Hello', 'Hi', or 'How can I help you today?'. "
+                #             "Just answer the user's request directly. "
+                #             "Also output emotion as one of: happy, sad, neutral, angry, surprised. "
+                #             "Format: <text> [emotion: <label>]"
+                #         )},
+                #         {"role": "user", "content": user_text},
+                #     ]
+                # )
+                # global is_offline
+                # is_offline = False
 
             except APIConnectionError:
                 print("❌ No internet: cannot reach OpenAI for chat completion. Check Wi-Fi.")
@@ -1045,7 +1074,8 @@ def main():
             # ----------------------------------------------
             # Handle model response + emotion
             # ----------------------------------------------
-            full_reply = response.choices[0].message.content.strip()
+            # response is already a string from the thread API
+            full_reply = response.strip()
 
             # Extract emotion
             match = re.search(r"\[emotion:\s*(\w+)\]", full_reply, re.IGNORECASE)
